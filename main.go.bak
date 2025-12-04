@@ -1,0 +1,156 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+const height = 5
+var bigChars = map[rune][]string{
+	'0': {"████", "█  █", "█  █", "█  █", "████"},
+	'1': {"   █", "   █", "   █", "   █", "   █"},
+	'2': {"████", "   █", "████", "█   ", "████"},
+	'3': {"████", "   █", "████", "   █", "████"},
+	'4': {"█  █", "█  █", "████", "   █", "   █"},
+	'5': {"████", "█   ", "████", "   █", "████"},
+	'6': {"████", "█   ", "████", "█  █", "████"},
+	'7': {"████", "   █", "   █", "   █", "   █"},
+	'8': {"████", "█  █", "████", "█  █", "████"},
+	'9': {"████", "█  █", "████", "   █", "████"},
+	'-': {"    ", "    ", "████", "    ", "    "},
+}
+
+func RenderNumber(n int) string {
+	s := strconv.Itoa(n)
+	lines := make([]string, height)
+	for _, char := range s {
+		sprite, ok := bigChars[char]
+		if !ok { continue }
+		for i := range height {
+			lines[i] += sprite[i] + " "
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+
+type model struct {
+	height    int
+	width     int
+	c         chan int
+	counter   int 
+	studyTime int
+	restTime  int
+	status    string
+	input     textinput.Model
+}
+
+type TickMsg int
+
+func timeSec(c chan int) {
+	i := 0
+	for {
+		time.Sleep(1 * time.Second)
+		i++
+		if i == 60{
+			i = 0
+		}
+		c <- i
+	}
+}
+
+func waitForNextNumber(c chan int) tea.Cmd {
+	return func() tea.Msg {
+		// <-c è bloccante, quindi Bubble Tea aspetterà qui in una goroutine separata
+		return TickMsg(<-c)
+	}
+}
+
+func initModel() model {
+	ti := textinput.New()
+	ti.CharLimit = 100
+	ti.Width = 30
+	return model{
+		c: make(chan int),
+		input: ti,
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return waitForNextNumber(m.c)
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+
+	
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "space":
+			m.status = "setup"
+		}
+			
+
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
+		m.width = msg.Width
+
+	case TickMsg:
+		m.counter = int(msg) 
+		return m, waitForNextNumber(m.c)
+	}
+
+	
+
+	return m, nil
+}
+
+func (m model) View() string {
+	if m.width == 0 {
+		return "Loading..."
+	}
+	var content string
+	if (m.status == "setup"){
+		
+		content := lipgloss.JoinVertical(lipgloss.Left,
+			"\n",
+			fmt.Sprintf("Minutes of study:"),
+			"\n",
+			m.input.View(),
+			"\n(Esc to cancel, Enter to connect)",
+		)
+		content = lipgloss.NewStyle().Padding(1, 2).Render(content)
+		
+	}else{
+		art := RenderNumber(m.counter)
+	
+		info := fmt.Sprintf("\nCounter: %d | Height: %d, Width: %d\n(Premi q per uscire)", m.counter, m.height, m.width)
+	
+		content = lipgloss.JoinVertical(lipgloss.Center, art, info)
+	}
+
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+}
+
+func main() {
+	m := initModel()
+
+	go timeSec(m.c)
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Alas, there's been an error: %v", err)
+		os.Exit(1)
+	}
+}
