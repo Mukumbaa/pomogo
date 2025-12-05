@@ -122,9 +122,9 @@ func RenderTime(s string) string {
 			}
 		}
 	}
-	for i := range lines {
-		lines[i] = strings.TrimRight(lines[i], " ")
-	}
+	// for i := range lines {
+	// 	lines[i] = strings.TrimRight(lines[i], " ")
+	// }
 	return strings.Join(lines, "\n")
 }
 type sessionState int
